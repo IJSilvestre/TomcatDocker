@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context>
+    <WatchedResource>WEB-INF/web.xml</WatchedResource>
+    <WatchedResource>WEB-INF/tomcat-web.xml</WatchedResource>
+    <WatchedResource>${catalina.base}/conf/web.xml</WatchedResource>
+
+    <!--
+      DataSource JNDI global. Na aplicacao, use:
+        java:comp/env/jdbc/VENDI
+      Os valores vem das variaveis de ambiente definidas no docker-compose.
+    -->
+    <Resource name="jdbc/VENDI"
+              auth="Container"
+              type="javax.sql.DataSource"
+              driverClassName="org.postgresql.Driver"
+              url="${DB_URL}"
+              username="${DB_USER}"
+              password="${DB_PASSWORD}"
+              maxTotal="20"
+              maxIdle="10"
+              minIdle="2"
+              maxWaitMillis="10000"
+              validationQuery="SELECT 1"
+              testOnBorrow="true"
+              removeAbandonedOnBorrow="true"
+              removeAbandonedTimeout="60"/>
+</Context>

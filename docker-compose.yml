@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-12-alpine}
+    container_name: vendi-app-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-appdb}
+      POSTGRES_USER: ${POSTGRES_USER:-appuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      TZ: ${TZ:-America/Sao_Paulo}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Scripts .sql/.sh aqui rodam apenas na PRIMEIRA inicializacao do volume
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-appdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+  tomcat:
+    build:
+      context: ./tomcat
+      args:
+        TOMCAT_VERSION: ${TOMCAT_VERSION:-9.0-jdk11-temurin}
+        PG_JDBC_VERSION: ${PG_JDBC_VERSION:-42.7.4}
+    image: app-tomcat:local
+    container_name: vendi-app-tomcat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-America/Sao_Paulo}
+      # Variaveis que a aplicacao pode ler (System.getenv) para montar a conexao
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-appdb}
+      DB_USER: ${POSTGRES_USER:-appuser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-appdb}
+      JAVA_OPTS: >-
+        -Xms${JAVA_XMS:-256m}
+        -Xmx${JAVA_XMX:-1024m}
+        -Djava.security.egd=file:/dev/./urandom
+        -Dfile.encoding=UTF-8
+        -Duser.timezone=${TZ:-America/Sao_Paulo}
+        -Dorg.apache.tomcat.util.digester.PROPERTY_SOURCE=org.apache.tomcat.util.digester.EnvironmentPropertySource
+    ports:
+      - "${TOMCAT_PORT:-8080}:8080"
+      # Porta de debug remoto (JDWP) - descomente se precisar
+      # - "5005:5005"
+    volumes:
+      # Coloque o .war aqui; o Tomcat faz o deploy automaticamente
+      - ./webapps:/usr/local/tomcat/webapps
+      # Configuracoes do Tomcat (context.xml com o DataSource JNDI, tomcat-users.xml).
+      # Montamos a pasta inteira e o entrypoint copia os arquivos para conf/ na subida:
+      # bind mount de arquivo unico quebra no macOS quando o arquivo e reescrito por um editor.
+      - ./tomcat/conf:/usr/local/tomcat/conf-custom:ro
+      - tomcat_logs:/usr/local/tomcat/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - app-net
+
+  pgadmin:
+    image: dpage/pgadmin4:${PGADMIN_VERSION:latest}
+    container_name: vendi-app-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      TZ: ${TZ:-America/Sao_Paulo}
+      # usados pelo entrypoint para gerar o pgpass (senha do servidor ja salva)
+      DB_USER: ${POSTGRES_USER:-appuser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    # Gera o pgpass a partir das variaveis (senha do servidor ja salva, sem arquivo versionado)
+    # e sobe o pgAdmin normalmente. "$$" e o escape do compose para o "$" chegar ao shell.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'echo "postgres:5432:*:$$DB_USER:$$DB_PASSWORD" > /var/lib/pgadmin/pgpass && chmod 600 /var/lib/pgadmin/pgpass && exec /entrypoint.sh'
+    ports:
+      - "${PGADMIN_PORT:-8081}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      # Servidor Postgres pre-cadastrado (importado na primeira inicializacao)
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - app-net
+
+volumes:
+  postgres_data:
+  tomcat_logs:
+  pgadmin_data:
+
+networks:
+  app-net:
+    driver: bridge

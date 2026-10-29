@@ -1,0 +1,8 @@
+.env
+webapps/*.war
+webapps/*/
+!webapps/.gitkeep
+*.backup
+*.dump
+.DS_Store
+sql_update_ambiente_dev_vendi.sql

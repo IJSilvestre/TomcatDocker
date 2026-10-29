@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "solocria (docker)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "solocria",
+      "Username": "appuser",
+      "SSLMode": "prefer",
+      "PassFile": "/var/lib/pgadmin/pgpass"
+    }
+  }
+}
